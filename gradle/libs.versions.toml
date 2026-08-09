@@ -15,8 +15,21 @@ spotbugsTool = "4.10.3"
 palantirJavaFormat = "2.97.0"
 jacoco = "0.8.15"
 
+# springdoc 2.x is the Spring Boot 3.x line; 3.x targets Boot 4 and will not start here.
+springdoc = "2.9.0"
+jqwik = "1.10.1"
+# 3.x pulls a swagger-parser that collides with the one springdoc 2.x brings in.
+swaggerRequestValidator = "2.46.1"
+resilience4j = "2.4.0"
+logstashEncoder = "9.0"
+
 [libraries]
 spotbugs-annotations = { module = "com.github.spotbugs:spotbugs-annotations", version.ref = "spotbugsTool" }
+springdoc-openapi-webmvc = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+jqwik = { module = "net.jqwik:jqwik", version.ref = "jqwik" }
+swagger-request-validator-core = { module = "com.atlassian.oai:swagger-request-validator-core", version.ref = "swaggerRequestValidator" }
+resilience4j-spring-boot3 = { module = "io.github.resilience4j:resilience4j-spring-boot3", version.ref = "resilience4j" }
+logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstashEncoder" }
 
 # Gradle plugins consumed as ordinary dependencies by `buildSrc` so that the convention
 # plugins in buildSrc/src/main/kotlin can apply them by id.

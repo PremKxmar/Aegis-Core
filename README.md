@@ -103,7 +103,7 @@ Built in milestones, each ending in a green build.
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Gradle multi-module skeleton, `contracts` + `Money`, local stack, CI | **Done** |
-| 2 | policy-service: schema, Flyway, bitemporal versioning, as-of resolver | Next |
+| 2 | policy-service: schema, Flyway, bitemporal versioning, as-of resolver | **Done** |
 | 3 | rating-service: rate tables, rule engine, worksheet, property-based tests | Pending |
 | 4 | claims-service: FNOL, state machine, ledger, coverage verification | Pending |
 | 5 | Kafka: transactional outbox, idempotent consumers, DLQ, contract tests | Pending |

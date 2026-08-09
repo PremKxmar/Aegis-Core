@@ -2,6 +2,38 @@ spring:
   application:
     name: policy-service
 
+  datasource:
+    url: ${POLICY_DB_URL:jdbc:postgresql://localhost:5432/aegis_policy}
+    username: ${POLICY_DB_USER:policy_svc}
+    password: ${POLICY_DB_PASSWORD:policy_svc}
+    hikari:
+      pool-name: policy-pool
+      maximum-pool-size: 10
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema; Hibernate only checks that the entities match what Flyway
+      # built. `validate` turns a forgotten migration into a startup failure instead of a
+      # column-not-found error on the first request that happens to touch the new field.
+      ddl-auto: validate
+    # Off deliberately: open-in-view keeps a database connection held for the whole request and
+    # lets lazy loading happen inside the view layer, which is how N+1 queries get into
+    # production without anyone writing a query.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # Store and read timestamps in UTC regardless of the JVM's zone, so a server whose
+          # timezone differs cannot shift transaction-time instants.
+          time_zone: UTC
+        # Fail loudly rather than silently issuing a query per row.
+        query:
+          fail_on_pagination_over_collection_fetch: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
 server:
   port: 8081
   # Let in-flight requests finish when Kubernetes sends SIGTERM during a rolling update,

@@ -51,6 +51,13 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+
+    // Tests fork their own JVM, so -D flags on the Gradle command line do not reach them.
+    // Forward the specific ones that drive test behaviour rather than passing everything, which
+    // would let an unrelated local property silently change what the suite does.
+    listOf("updateOpenApi").forEach { key ->
+        System.getProperty(key)?.let { systemProperty(key, it) }
+    }
     testLogging {
         events("failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

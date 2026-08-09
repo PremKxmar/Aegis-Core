@@ -1,0 +1,517 @@
+openapi: 3.1.0
+info:
+  title: Aegis Core - Policy Service
+  description: |
+    Policy administration with bitemporal versioning.
+
+    A policy is an append-only chain of effective-dated versions. Every
+    version records both when its terms applied in the real world (valid
+    time: effectiveFrom/effectiveTo) and when this system believed them
+    (transaction time: recordedAt/supersededAt).
+
+    Both periods are half-open - lower bound inclusive, upper bound
+    exclusive - so adjacent versions never disagree about a boundary date.
+
+    The endpoint that matters is GET /coverage-verification, which
+    answers a claim's question: on the date of this loss, was this
+    coverage in force, and for how much?
+  contact:
+    name: Aegis Core
+  license:
+    name: MIT
+    identifier: MIT
+  version: 1.0.0
+servers:
+- url: /
+  description: Relative to the deployed host
+tags:
+- name: Policies
+  description: "Binding, endorsement, cancellation and as-of-date coverage resolution"
+paths:
+  /api/v1/policies:
+    post:
+      tags:
+      - Policies
+      summary: Bind a new policy
+      description: Creates version 1. The policy number must not already exist.
+      operationId: bind
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BindPolicyRequest"
+        required: true
+      responses:
+        "201":
+          description: Bound
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "400":
+          description: Request failed validation
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "409":
+          description: Policy number already in use
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+  /api/v1/policies/{policyNumber}/endorsements:
+    post:
+      tags:
+      - Policies
+      summary: Endorse a policy
+      description: Records a mid-term change. effectiveFrom may be in the past.
+      operationId: endorse
+      parameters:
+      - name: policyNumber
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndorsePolicyRequest"
+        required: true
+      responses:
+        "200":
+          description: Endorsed
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "404":
+          description: No such policy
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "409":
+          description: Concurrent modification
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "422":
+          description: Policy was not in force on the effective date
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+  /api/v1/policies/{policyNumber}/cancellation:
+    post:
+      tags:
+      - Policies
+      summary: Cancel a policy
+      description: Terminal. Takes the policy off risk from effectiveFrom.
+      operationId: cancel
+      parameters:
+      - name: policyNumber
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelPolicyRequest"
+        required: true
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "404":
+          description: No such policy
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+        "422":
+          description: Policy was not in force on the effective date
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyResponse"
+  /api/v1/policies/{policyNumber}:
+    get:
+      tags:
+      - Policies
+      summary: Resolve the version in force on a date
+      description: |
+        Answers "what were the terms on asOf, as we understood them at asAt".
+        Omit asOf for today and asAt for the current understanding. Supplying asAt
+        reconstructs a past decision: it deliberately hides anything recorded since,
+        including backdated endorsements.
+      operationId: resolveAsOf
+      parameters:
+      - name: policyNumber
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: asOf
+        in: query
+        description: "Valid-time date. For a claim, the loss date. Defaults to today."
+        required: false
+        schema:
+          type: string
+          format: date
+      - name: asAt
+        in: query
+        description: Transaction-time instant. Defaults to now.
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          description: The version in force on that date
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyVersionResponse"
+        "404":
+          description: "No such policy, or no version in force on that date"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PolicyVersionResponse"
+  /api/v1/policies/{policyNumber}/versions:
+    get:
+      tags:
+      - Policies
+      summary: The full audit trail
+      description: |
+        Every version ever recorded, superseded ones included, ordered by when it was
+        recorded. This is the regulator's view: it shows not just what the policy says
+        now but everything the system has ever believed it said, and when that changed.
+      operationId: history
+      parameters:
+      - name: policyNumber
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PolicyVersionResponse"
+  /api/v1/policies/{policyNumber}/coverage-verification:
+    get:
+      tags:
+      - Policies
+      summary: Verify coverage as of a loss date
+      description: |
+        The call claims-service makes at first notice of loss. Returns 200 whether or
+        not the loss is covered - "not covered" is an answer, not a failure, and the
+        caller must be able to tell it apart from this service being unavailable.
+      operationId: verifyCoverage
+      parameters:
+      - name: policyNumber
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: lossDate
+        in: query
+        description: The loss date.
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: coverageCode
+        in: query
+        description: "Coverage code to check, e.g. COLLISION."
+        required: true
+        schema:
+          type: string
+      - name: asAt
+        in: query
+        description: Transaction-time instant. Defaults to now.
+        required: false
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          description: The coverage position on that date
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CoverageVerificationResponse"
+        "404":
+          description: No such policy
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/CoverageVerificationResponse"
+components:
+  schemas:
+    BindPolicyRequest:
+      type: object
+      description: "Binds a new policy, creating version 1 of its history."
+      properties:
+        policyNumber:
+          type: string
+          example: AUTO-0001
+          maxLength: 32
+          minLength: 0
+        productCode:
+          type: string
+          example: PERSONAL_AUTO
+          maxLength: 32
+          minLength: 0
+        inceptionDate:
+          type: string
+          format: date
+          description: "First day of cover, inclusive."
+          example: 2026-01-01
+        expiryDate:
+          type: string
+          format: date
+          description: "First day no longer covered, EXCLUSIVE. Null for no scheduled\
+            \ expiry."
+          example: 2027-01-01
+        insuredName:
+          type: string
+          example: Priya Raman
+          maxLength: 200
+          minLength: 0
+        territory:
+          type: string
+          example: TX-DALLAS
+          maxLength: 32
+          minLength: 0
+        coverages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoverageDto"
+          minItems: 1
+      required:
+      - coverages
+      - inceptionDate
+      - insuredName
+      - policyNumber
+      - productCode
+      - territory
+    CoverageDto:
+      type: object
+      description: "A single coverage line: what is covered, to what limit, above\
+        \ what deductible."
+      properties:
+        coverageCode:
+          type: string
+          example: COLLISION
+          maxLength: 32
+          minLength: 0
+        limit:
+          $ref: "#/components/schemas/Money"
+          description: Maximum payable for a single loss under this coverage.
+        deductible:
+          $ref: "#/components/schemas/Money"
+          description: Deducted from the loss before payment.
+        exclusions:
+          type: array
+          description: Exclusion codes carved out of this coverage.
+          example:
+          - RACING
+          items:
+            type: string
+          uniqueItems: true
+      required:
+      - coverageCode
+      - deductible
+      - limit
+    Money:
+      type: object
+      properties:
+        amount:
+          type: number
+        currency:
+          type: string
+    PolicyResponse:
+      type: object
+      description: A policy and the timeline of versions the system currently believes.
+      properties:
+        policyId:
+          type: string
+          format: uuid
+        policyNumber:
+          type: string
+        productCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lockVersion:
+          type: integer
+          format: int64
+          description: Optimistic lock value; supply it as If-Match on writes to detect
+            lost updates.
+        currentChain:
+          type: array
+          description: "The believed timeline in effective-date order, gap-free and\
+            \ non-overlapping."
+          items:
+            $ref: "#/components/schemas/PolicyVersionResponse"
+    PolicyVersionResponse:
+      type: object
+      description: |
+        One version of a policy, positioned in both time dimensions.
+        effectiveTo and supersededAt are EXCLUSIVE upper bounds; null means unbounded.
+      properties:
+        versionId:
+          type: string
+          format: uuid
+        policyNumber:
+          type: string
+        versionNumber:
+          type: integer
+          format: int32
+        changeType:
+          type: string
+        status:
+          type: string
+        effectiveFrom:
+          type: string
+          format: date
+          description: "Valid time: first day these terms applied, inclusive."
+        effectiveTo:
+          type: string
+          format: date
+          description: "Valid time: first day they no longer applied, EXCLUSIVE."
+        recordedAt:
+          type: string
+          format: date-time
+          description: "Transaction time: when the system recorded these terms."
+        supersededAt:
+          type: string
+          format: date-time
+          description: "Transaction time: when the system stopped believing them,\
+            \ EXCLUSIVE. Null if current."
+        insuredName:
+          type: string
+        territory:
+          type: string
+        changeReason:
+          type: string
+        coverages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoverageDto"
+    EndorsePolicyRequest:
+      type: object
+      description: |
+        Records a mid-term change. effectiveFrom may be in the past: a backdated
+        endorsement applies from its effective date while remaining recorded as having
+        been keyed in now, and it does not erase endorsements already recorded with a
+        later effective date.
+      properties:
+        effectiveFrom:
+          type: string
+          format: date
+          description: "First day the new terms apply, inclusive. May be backdated."
+          example: 2026-04-01
+        insuredName:
+          type: string
+          example: Priya Raman
+          maxLength: 200
+          minLength: 0
+        territory:
+          type: string
+          example: TX-DALLAS
+          maxLength: 32
+          minLength: 0
+        changeReason:
+          type: string
+          example: "Increased collision limit to 100,000"
+          maxLength: 500
+          minLength: 0
+        coverages:
+          type: array
+          description: "The COMPLETE set of coverage lines from effectiveFrom onward,\
+            \ not a delta."
+          items:
+            $ref: "#/components/schemas/CoverageDto"
+          minItems: 1
+      required:
+      - coverages
+      - effectiveFrom
+      - insuredName
+      - territory
+    CancelPolicyRequest:
+      type: object
+      description: Takes the policy off risk from effectiveFrom onward. Terminal.
+      properties:
+        effectiveFrom:
+          type: string
+          format: date
+          description: "First day off risk, inclusive. May be backdated."
+          example: 2026-09-01
+        reason:
+          type: string
+          example: Non-payment of premium
+          maxLength: 500
+          minLength: 0
+      required:
+      - effectiveFrom
+    CoverageVerificationResponse:
+      type: object
+      description: "Coverage position for one coverage code on one date, resolved\
+        \ bitemporally."
+      properties:
+        policyNumber:
+          type: string
+        asOfDate:
+          type: string
+          format: date
+          description: "The date the coverage question was asked about - for a claim,\
+            \ the loss date."
+        asAtInstant:
+          type: string
+          format: date-time
+          description: The transaction-time instant this answer reflects.
+        versionId:
+          type: string
+          format: uuid
+          description: Null when no version of the policy existed on asOfDate.
+        versionNumber:
+          type: integer
+          format: int32
+        policyInForce:
+          type: boolean
+          description: True only if a version existed AND it was not cancelled.
+        coverageFound:
+          type: boolean
+          description: True if that version carried a line for the requested coverage
+            code.
+        coverageCode:
+          type: string
+        limit:
+          $ref: "#/components/schemas/Money"
+        deductible:
+          $ref: "#/components/schemas/Money"
+        exclusions:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        explanation:
+          type: string
+          description: "Human-readable reason, always populated - it is quoted verbatim\
+            \ in claim decisions."
