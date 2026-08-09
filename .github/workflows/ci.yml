@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push to the same branch cancels the first run. Without this, a busy branch queues
+# up runs that are all testing superseded commits.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and gate
+    runs-on: ubuntu-latest
+    # Testcontainers integration tests arrive in milestone 2 and pull real images; the default
+    # 6h timeout would let a hung container burn the runner budget.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Only the default branch writes to the shared cache, so a pull request cannot
+          # poison the cache that every other build reads.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # `build` is deliberately one step rather than four. It runs, in order: Spotless format
+      # check, compilation, the test suites, SpotBugs static analysis and the JaCoCo coverage
+      # gate — exactly what `make build` runs locally, so CI cannot fail for a reason a
+      # developer could not have reproduced before pushing.
+      - name: Build, verify and enforce gates
+        run: ./gradlew build --no-daemon --stacktrace
+
+      - name: Publish test report
+        # Runs even when the build fails, which is precisely when the report is worth reading.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-and-coverage-reports
+          path: |
+            **/build/reports/tests/
+            **/build/reports/jacoco/
+            **/build/reports/spotbugs/
+          retention-days: 7
+          if-no-files-found: ignore

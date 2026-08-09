@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter
+        xmlns="https://github.com/spotbugs/filter/3.0.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="https://github.com/spotbugs/filter/3.0.0 https://raw.githubusercontent.com/spotbugs/spotbugs/master/spotbugs/etc/findbugsfilter.xsd">
+
+    <!--
+        Every exclusion below must state why the warning does not apply. An exclusion file
+        that grows without justification is how a static-analysis gate quietly dies.
+    -->
+
+    <!--
+        EI_EXPOSE_REP / EI_EXPOSE_REP2: SpotBugs flags storing or returning a reference to a
+        mutable object. Spring injects singleton collaborators (repositories, clients,
+        clocks) by constructor everywhere in this codebase; defensively copying them is not
+        possible and not desirable.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+</FindBugsFilter>

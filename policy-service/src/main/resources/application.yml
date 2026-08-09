@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: policy-service
+
+server:
+  port: 8081
+  # Let in-flight requests finish when Kubernetes sends SIGTERM during a rolling update,
+  # instead of severing them and surfacing 502s to callers.
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        # Splits health into /actuator/health/liveness and /actuator/health/readiness.
+        # Kubernetes needs the distinction: a failed liveness probe restarts the pod, a failed
+        # readiness probe only takes it out of the Service's endpoint list.
+        enabled: true
