@@ -104,12 +104,12 @@ Built in milestones, each ending in a green build.
 |---|---|---|
 | 1 | Gradle multi-module skeleton, `contracts` + `Money`, local stack, CI | **Done** |
 | 2 | policy-service: schema, Flyway, bitemporal versioning, as-of resolver | **Done** |
-| 3 | rating-service: rate tables, rule engine, worksheet, property-based tests | Pending |
+| 3 | rating-service: rate tables, rule engine, worksheet, property-based tests | **Done** |
 | 4 | claims-service: FNOL, state machine, ledger, coverage verification | Pending |
 | 5 | Kafka: transactional outbox, idempotent consumers, DLQ, contract tests | Pending |
 | 6 | Resilience4j, JWT security, idempotency keys, tracing and metrics | Pending |
 | 7 | Kubernetes manifests, `kind` smoke test in CI, demo script, `INTERVIEW.md` | Pending |
 
-Milestone 1 is infrastructure and the money primitive; the services currently expose health
-and build-info endpoints only. The `curl` demo script that tells the coverage-as-of-loss-date
-story end to end arrives with milestone 7, once there are endpoints for it to call.
+policy-service and rating-service expose full REST APIs with committed OpenAPI 3.1 documents;
+claims-service currently exposes health and build-info only. The `curl` demo script that tells
+the coverage-as-of-loss-date story end to end arrives with milestone 7.

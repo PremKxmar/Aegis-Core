@@ -1,0 +1,362 @@
+openapi: 3.1.0
+info:
+  title: Aegis Core - Rating Service
+  description: |
+    Deterministic premium calculation from versioned, effective-dated rate tables.
+
+    Same input plus same rate table version always produces the same premium.
+    The engine is a pure function: no clock, no randomness, no ambient state,
+    and the effective date is a parameter rather than "today".
+
+    Every quote stores its worksheet - the ordered list of factors applied,
+    each with its input, factor value and running subtotal - so any premium
+    can be explained line by line rather than merely reproduced.
+  contact:
+    name: Aegis Core
+  license:
+    name: MIT
+    identifier: MIT
+  version: 1.0.0
+servers:
+- url: /
+  description: Relative to the deployed host
+tags:
+- name: Rating
+  description: Deterministic premium calculation with an explainable worksheet
+paths:
+  /api/v1/quotes:
+    post:
+      tags:
+      - Rating
+      summary: Rate a risk and issue a quote
+      description: |
+        Selects the rate table in force on the risk's effective date - never simply
+        the newest - runs the rules in a fixed order and stores the worksheet.
+        Rating the same risk for the same effective date always produces the same
+        premium, however long afterwards.
+      operationId: quote
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+        required: true
+      responses:
+        "201":
+          description: Quoted
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuoteResponse"
+        "400":
+          description: Request failed validation
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuoteResponse"
+        "422":
+          description: "The risk cannot be rated: no table in force, or an unrated\
+            \ coverage, territory, age or claim count"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuoteResponse"
+  /api/v1/rate-tables:
+    get:
+      tags:
+      - Rating
+      summary: List the published rate tables for a product
+      description: "Every version, in order, with its effective period and every factor\
+        \ it contains."
+      operationId: rateTables
+      parameters:
+      - name: productCode
+        in: query
+        description: e.g. PERSONAL_AUTO
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RateTableResponse"
+  /api/v1/rate-tables/effective:
+    get:
+      tags:
+      - Rating
+      summary: The rate table in force on a date
+      description: Which published rates a risk effective on this date would be priced
+        from.
+      operationId: effectiveRateTable
+      parameters:
+      - name: productCode
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: effectiveDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          description: The table in force
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/RateTableResponse"
+        "422":
+          description: "No table in force, or overlapping tables"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/RateTableResponse"
+  /api/v1/quotes/{quoteNumber}:
+    get:
+      tags:
+      - Rating
+      summary: Retrieve a quote and its worksheet
+      description: "Returns the worksheet as it was stored, not as it would be recomputed\
+        \ today."
+      operationId: findQuote
+      parameters:
+      - name: quoteNumber
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: The quote
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuoteResponse"
+        "404":
+          description: No such quote
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/QuoteResponse"
+components:
+  schemas:
+    CoverageRequest:
+      type: object
+      description: "A coverage to rate, with the limit it should be rated at."
+      properties:
+        coverageCode:
+          type: string
+          example: COLLISION
+          maxLength: 32
+          minLength: 0
+        limit:
+          $ref: "#/components/schemas/Money"
+          description: "Base rate is charged per 1,000 of this."
+      required:
+      - coverageCode
+      - limit
+    Money:
+      type: object
+      properties:
+        amount:
+          type: number
+        currency:
+          type: string
+    QuoteRequest:
+      type: object
+      description: A risk to be rated. The effective date selects which rate table
+        version applies.
+      properties:
+        productCode:
+          type: string
+          example: PERSONAL_AUTO
+          maxLength: 32
+          minLength: 0
+        effectiveDate:
+          type: string
+          format: date
+          description: Rate AS OF this date. Not today's date - re-rating the same
+            risk for the same effective date always reproduces the same premium.
+          example: 2026-06-01
+        territory:
+          type: string
+          example: TX-DALLAS
+          maxLength: 32
+          minLength: 0
+        assetAgeYears:
+          type: integer
+          format: int32
+          description: Age of the insured asset in whole years.
+          example: 3
+          minimum: 0
+        priorClaimsCount:
+          type: integer
+          format: int32
+          description: At-fault claims in the look-back period.
+          example: 1
+          minimum: 0
+        policiesHeld:
+          type: integer
+          format: int32
+          description: "Total policies the insured holds, including this one."
+          example: 2
+          minimum: 1
+        coverages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoverageRequest"
+          minItems: 1
+      required:
+      - coverages
+      - effectiveDate
+      - productCode
+      - territory
+    CoverageQuoted:
+      type: object
+      properties:
+        coverageCode:
+          type: string
+        limit:
+          $ref: "#/components/schemas/Money"
+    QuoteResponse:
+      type: object
+      description: |
+        A premium and the arithmetic that produced it. The worksheet is the point: every
+        factor applied, with its input, its multiplier and the running subtotal, so any
+        premium can be explained line by line.
+      properties:
+        quoteNumber:
+          type: string
+        productCode:
+          type: string
+        effectiveDate:
+          type: string
+          format: date
+          description: The date the risk was rated as of.
+        rateTable:
+          type: string
+          description: Which published rate table produced this premium.
+        rateTableVersion:
+          type: integer
+          format: int32
+        territory:
+          type: string
+        assetAgeYears:
+          type: integer
+          format: int32
+        priorClaimsCount:
+          type: integer
+          format: int32
+        policiesHeld:
+          type: integer
+          format: int32
+        coverages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoverageQuoted"
+        totalPremium:
+          $ref: "#/components/schemas/Money"
+          description: Always equal to the subtotal on the last worksheet line.
+        worksheet:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorksheetLineResponse"
+        createdAt:
+          type: string
+          format: date-time
+    WorksheetLineResponse:
+      type: object
+      description: One step of the calculation.
+      properties:
+        stepNumber:
+          type: integer
+          format: int32
+        stepType:
+          type: string
+        description:
+          type: string
+        inputValue:
+          type: string
+          description: "What went in, as displayed text."
+        factorValue:
+          type: number
+          description: The multiplier applied. Null on additive base-rate lines.
+        subtotal:
+          $ref: "#/components/schemas/Money"
+          description: The running total after this step.
+    BandResponse:
+      type: object
+      description: "A half-open band: min <= value < max. Null max means open-ended."
+      properties:
+        min:
+          type: integer
+          format: int32
+        max:
+          type: integer
+          format: int32
+        factor:
+          type: number
+    BaseRateResponse:
+      type: object
+      properties:
+        coverageCode:
+          type: string
+        ratePerThousand:
+          type: number
+    RateTableResponse:
+      type: object
+      description: A published rate table. Effective-dated; never edited after publication.
+      properties:
+        rateTableId:
+          type: string
+          format: uuid
+        productCode:
+          type: string
+        tableVersion:
+          type: integer
+          format: int32
+        effectiveFrom:
+          type: string
+          format: date
+          description: "First day these rates apply, inclusive."
+        effectiveTo:
+          type: string
+          format: date
+          description: "First day they no longer apply, EXCLUSIVE. Null if current."
+        publishedAt:
+          type: string
+          format: date-time
+        multiPolicyDiscountFactor:
+          type: number
+        minimumPremium:
+          $ref: "#/components/schemas/Money"
+        baseRates:
+          type: array
+          items:
+            $ref: "#/components/schemas/BaseRateResponse"
+        territoryFactors:
+          type: array
+          items:
+            $ref: "#/components/schemas/TerritoryFactorResponse"
+        assetAgeBands:
+          type: array
+          items:
+            $ref: "#/components/schemas/BandResponse"
+        claimsBands:
+          type: array
+          items:
+            $ref: "#/components/schemas/BandResponse"
+    TerritoryFactorResponse:
+      type: object
+      properties:
+        territory:
+          type: string
+        factor:
+          type: number

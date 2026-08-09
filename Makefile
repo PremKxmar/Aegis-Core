@@ -34,9 +34,13 @@ fmt: ## Apply the code formatter in place
 clean: ## Delete build outputs
 	$(GRADLE) clean
 
+# Scoped to the modules that actually expose an HTTP API. A repo-wide `test --tests` would fail
+# on every module with no matching test, which is not the same thing as a failure.
+OPENAPI_MODULES := :policy-service:test :rating-service:test
+
 .PHONY: openapi
 openapi: ## Regenerate the committed OpenAPI documents from the running controllers
-	$(GRADLE) test --tests '*OpenApiSpecificationTest*' -DupdateOpenApi=true
+	$(GRADLE) $(OPENAPI_MODULES) --tests '*OpenApiSpecificationTest*' -DupdateOpenApi=true
 	@echo "Regenerated. Review the diff: a change clients would notice is a breaking API change."
 
 ## ---- local stack ----------------------------------------------------------

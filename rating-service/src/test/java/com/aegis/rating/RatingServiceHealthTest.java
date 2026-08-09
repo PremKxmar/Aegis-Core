@@ -2,26 +2,25 @@ package com.aegis.rating;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aegis.rating.support.PostgresIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 /** See {@code PolicyServiceHealthTest} for why this asserts on probes rather than just startup. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class RatingServiceHealthTest {
+class RatingServiceHealthTest extends PostgresIntegrationTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
 
     @Test
-    void reportsHealthy() {
+    void reportsHealthyIncludingTheDatabase() {
         ResponseEntity<String> response = restTemplate.getForEntity("/actuator/health", String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).contains("\"status\":\"UP\"");
+        assertThat(response.getBody()).contains("\"status\":\"UP\"").contains("\"db\"");
     }
 
     @Test
